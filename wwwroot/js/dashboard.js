@@ -130,12 +130,22 @@ class PocketFenceDashboard {
     }
 
     updateUI() {
+        console.log('🔄 Updating UI with hotspot state:', this.data.hotspotEnabled);
+        
         // Update hotspot status
         const hotspotStatus = document.getElementById('hotspot-status');
         const hotspotToggle = document.getElementById('hotspot-toggle');
+        const hotspotButton = document.getElementById('hotspot-button');
         if (hotspotStatus && hotspotToggle) {
             hotspotStatus.textContent = this.data.hotspotEnabled ? 'Enabled' : 'Disabled';
             hotspotToggle.classList.toggle('active', this.data.hotspotEnabled);
+        }
+        if (hotspotButton) {
+            const buttonText = this.data.hotspotEnabled ? 'Disable Hotspot' : 'Enable Hotspot';
+            console.log('🔘 Setting button text to:', buttonText);
+            hotspotButton.textContent = buttonText;
+            // Update button style based on state
+            hotspotButton.className = this.data.hotspotEnabled ? 'btn danger' : 'btn';
         }
 
         // Update device count
@@ -222,15 +232,18 @@ class PocketFenceDashboard {
 
     // API interaction methods
     async toggleHotspot() {
+        console.log('🔥 Toggling hotspot from:', this.data.hotspotEnabled, 'to:', !this.data.hotspotEnabled);
         try {
             const response = await fetch('/api/hotspot/toggle', { method: 'POST' });
             const result = await response.json();
             this.data.hotspotEnabled = result.enabled;
+            console.log('✅ Hotspot API response:', result);
             this.updateUI();
         } catch (error) {
             console.error('Failed to toggle hotspot:', error);
             // Mock toggle for demo
             this.data.hotspotEnabled = !this.data.hotspotEnabled;
+            console.log('🎯 Mock toggle - hotspot now:', this.data.hotspotEnabled);
             this.updateUI();
         }
     }

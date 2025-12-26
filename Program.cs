@@ -1,135 +1,308 @@
-using Microsoft.AspNetCore.Builder;
-using Microsoft.AspNetCore.Hosting;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Hosting;
-using Microsoft.Extensions.Hosting.WindowsServices;
-using Microsoft.Extensions.Logging;
 using PocketFence_Simple.Services;
+using PocketFence_Simple.Services.AI;
 using PocketFence_Simple.Hubs;
-using PocketFence_Simple.Interfaces;
+using Serilog;
 using System.Runtime.InteropServices;
 
-namespace PocketFence_Simple;
+// Configure Serilog for structured logging
+Log.Logger = new LoggerConfiguration()
+    .WriteTo.Console(outputTemplate: "[{Timestamp:HH:mm:ss} {Level:u3}] {Message:lj}{NewLine}{Exception}")
+    .WriteTo.File("logs/pocketfence-.txt", 
+        rollingInterval: RollingInterval.Day,
+        retainedFileCountLimit: 7,
+        outputTemplate: "{Timestamp:yyyy-MM-dd HH:mm:ss.fff zzz} [{Level:u3}] {Message:lj}{NewLine}{Exception}")
+    .Enrich.FromLogContext()
+    .CreateLogger();
 
-public class Program
+try
 {
-    public static async Task Main(string[] args)
+    Log.Information("🚀 Starting PocketFence-Simple v2.0 with AI enhancements");
+    
+    var builder = WebApplication.CreateBuilder(args);
+
+    // Add Serilog
+    builder.Host.UseSerilog();
+
+    // Add Windows Service support if on Windows
+    if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
     {
-        var builder = WebApplication.CreateBuilder(args);
-
-        // Configure services for cross-platform operation
-        ConfigureServices(builder.Services, builder.Configuration);
-
-        // Configure logging
-        builder.Logging.ClearProviders();
-        builder.Logging.AddConsole();
-        builder.Logging.AddDebug();
-
-        // Add Windows Service support if on Windows
-        if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+        builder.Host.UseWindowsService(options =>
         {
-            builder.Host.UseWindowsService();
-        }
-
-        var app = builder.Build();
-
-        // Configure the HTTP request pipeline
-        ConfigureApp(app);
-
-        // Get the server URLs
-        var urls = app.Configuration["urls"] ?? "http://0.0.0.0:8080;https://0.0.0.0:8443";
-        
-        Console.WriteLine("🚀 PocketFence Dashboard Starting...");
-        Console.WriteLine($"📊 Dashboard URL: {GetDashboardUrl(urls)}");
-        Console.WriteLine("🌐 Accessible from any device on your network");
-        Console.WriteLine("📱 Mobile-friendly responsive design");
-        Console.WriteLine();
-
-        await app.RunAsync();
-    }
-
-    private static void ConfigureServices(IServiceCollection services, IConfiguration configuration)
-    {
-        // Add ASP.NET Core services
-        services.AddControllers();
-        services.AddSignalR(); // Real-time updates
-        services.AddHttpClient();
-        
-        // Add CORS for cross-platform access
-        services.AddCors(options =>
-        {
-            options.AddDefaultPolicy(builder =>
-            {
-                builder.AllowAnyOrigin()
-                       .AllowAnyMethod()
-                       .AllowAnyHeader();
-            });
+            options.ServiceName = "PocketFence-Simple";
         });
-
-        // Register application services
-        services.AddSingleton<ContentFilterService>();
-        services.AddSingleton<HotspotService>();
-        services.AddSingleton<NetworkTrafficService>();
-        
-        // Platform-specific network service  
-        if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
-        {
-            services.AddSingleton<INetworkService, Platforms.Windows.WindowsNetworkService>();
-        }
     }
 
-    private static void ConfigureApp(WebApplication app)
+    // Configure services
+    ConfigureServices(builder.Services);
+
+    var app = builder.Build();
+
+    // Configure pipeline
+    await ConfigureAppAsync(app);
+
+    var urls = GetServerUrls(app);
+    LogStartupInfo(urls);
+
+    await app.RunAsync();
+}
+catch (Exception ex)
+{
+    Log.Fatal(ex, "Application terminated unexpectedly");
+    return 1;
+}
+finally
+{
+    await Log.CloseAndFlushAsync();
+}
+
+return 0;
+
+static void ConfigureServices(IServiceCollection services)
+{
+    // API and Web services
+    services.AddControllers(options =>
     {
-        // Configure the HTTP request pipeline
-        if (app.Environment.IsDevelopment())
-        {
-            app.UseDeveloperExceptionPage();
-        }
+        options.SuppressAsyncSuffixInActionNames = false;
+    });
 
-        app.UseRouting();
-        app.UseCors();
-        
-        // Serve static files (our web dashboard)
-        app.UseStaticFiles();
-
-        // API endpoints
-        app.MapControllers();
-        app.MapHub<DashboardHub>("/dashboardHub");
-
-        // Default route to dashboard
-        app.MapFallbackToFile("index.html");
-    }
-
-    private static string GetDashboardUrl(string urls)
+    services.AddSignalR(options =>
     {
-        var urlList = urls.Split(';');
-        var httpUrl = urlList.FirstOrDefault(u => u.StartsWith("http://")) ?? urlList.First();
-        
-        // Replace 0.0.0.0 with local IP for display
-        if (httpUrl.Contains("0.0.0.0"))
+        options.EnableDetailedErrors = true;
+        options.MaximumReceiveMessageSize = 1024 * 1024; // 1MB
+        options.StreamBufferCapacity = 10;
+    });
+
+    // Configure CORS for cross-platform access
+    services.AddCors(options =>
+    {
+        options.AddDefaultPolicy(policy =>
         {
-            var localIp = GetLocalIPAddress();
-            httpUrl = httpUrl.Replace("0.0.0.0", localIp);
-        }
+            policy.AllowAnyOrigin()
+                  .AllowAnyHeader()
+                  .AllowAnyMethod()
+                  .WithExposedHeaders("*");
+        });
+    });
+
+    // HTTP client factory with modern configuration
+    services.AddHttpClient();
+    services.AddHttpClient("UpdateService", client =>
+    {
+        client.Timeout = TimeSpan.FromSeconds(30);
+        client.DefaultRequestHeaders.Add("User-Agent", "PocketFence-Simple/2.0");
+        client.DefaultRequestHeaders.Add("Accept", "application/json");
+    });
+
+    // Register core services with singleton lifetime
+    services.AddSingleton<HotspotService>();
+    services.AddSingleton<NetworkTrafficService>();
+    services.AddSingleton<ContentFilterService>();
+
+    // Register AI services - using modern DI patterns
+    services.AddSingleton<AINotificationService>();
+    services.AddSingleton<AIThreatDetectionService>();
+    services.AddSingleton<SelfHealingService>();
+    services.AddSingleton<AutoUpdateService>();
+    services.AddSingleton<AIParentalAssistantService>();
+
+    // Add health checks
+    services.AddHealthChecks()
+        .AddCheck<HealthCheckService>("system_health");
+
+    // OpenAPI/Swagger with modern configuration
+    services.AddEndpointsApiExplorer();
+    services.AddSwaggerGen(c =>
+    {
+        c.SwaggerDoc("v2", new() 
+        { 
+            Title = "PocketFence Simple API", 
+            Version = "v2.0",
+            Description = "Next-generation AI-powered parental control system with advanced threat detection and autonomous security responses.",
+            Contact = new() { Name = "PocketFence Team" }
+        });
         
-        return httpUrl;
+        c.IncludeXmlComments(Path.Combine(AppContext.BaseDirectory, "PocketFence-Simple.xml"), true);
+    });
+
+    // Add memory caching
+    services.AddMemoryCache();
+    
+    // Add background services
+    services.AddHostedService<SystemMonitoringService>();
+}
+
+static async Task ConfigureAppAsync(WebApplication app)
+{
+    // Exception handling
+    if (app.Environment.IsDevelopment())
+    {
+        app.UseDeveloperExceptionPage();
+        app.UseSwagger();
+        app.UseSwaggerUI(c =>
+        {
+            c.SwaggerEndpoint("/swagger/v2/swagger.json", "PocketFence Simple API v2.0");
+            c.RoutePrefix = "api-docs";
+            c.DocumentTitle = "PocketFence API Documentation";
+            c.DefaultModelsExpandDepth(-1);
+        });
+    }
+    else
+    {
+        app.UseExceptionHandler("/error");
+        app.UseHsts();
     }
 
-    private static string GetLocalIPAddress()
+    // Security headers
+    app.UseSecurityHeaders();
+    
+    // CORS
+    app.UseCors();
+    
+    // Static files with caching
+    app.UseStaticFiles(new StaticFileOptions
+    {
+        OnPrepareResponse = ctx =>
+        {
+            ctx.Context.Response.Headers.Append("Cache-Control", "public,max-age=3600");
+        }
+    });
+
+    // Health checks
+    app.MapHealthChecks("/health");
+
+    // Routing
+    app.UseRouting();
+
+    // API endpoints
+    app.MapControllers();
+    
+    // SignalR hub
+    app.MapHub<DashboardHub>("/hub/dashboard", options =>
+    {
+        options.TransportMaxBufferSize = 1024 * 1024;
+        options.ApplicationMaxBufferSize = 1024 * 1024;
+    });
+
+    // SPA fallback
+    app.MapFallbackToFile("index.html");
+
+    // Initialize AI services
+    await InitializeServicesAsync(app.Services);
+}
+
+static async Task InitializeServicesAsync(IServiceProvider services)
+{
+    try
+    {
+        using var scope = services.CreateScope();
+        var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
+        
+        // Initialize AI services
+        var aiServices = new object?[]
+        {
+            scope.ServiceProvider.GetService<AINotificationService>(),
+            scope.ServiceProvider.GetService<AIThreatDetectionService>(),
+            scope.ServiceProvider.GetService<SelfHealingService>(),
+            scope.ServiceProvider.GetService<AutoUpdateService>(),
+            scope.ServiceProvider.GetService<AIParentalAssistantService>()
+        };
+
+        logger.LogInformation("🤖 Initializing {Count} AI services", aiServices.Length);
+        
+        // Services are initialized through dependency injection
+        await Task.CompletedTask;
+        
+        logger.LogInformation("✅ All AI services initialized successfully");
+    }
+    catch (Exception ex)
+    {
+        Log.Error(ex, "Failed to initialize AI services");
+        throw;
+    }
+}
+
+static string GetServerUrls(WebApplication app)
+{
+    var urls = app.Configuration["urls"];
+    if (!string.IsNullOrEmpty(urls))
+        return urls;
+        
+    // Default to network-accessible URLs for mobile testing
+    return app.Environment.IsDevelopment() 
+        ? "http://0.0.0.0:5000;https://0.0.0.0:5001" 
+        : "http://0.0.0.0:8080;https://0.0.0.0:8443";
+}
+
+static void LogStartupInfo(string urls)
+{
+    Log.Information("🌐 Server URLs: {Urls}", urls);
+    Log.Information("📊 Dashboard: Navigate to the server URL in your web browser");
+    Log.Information("📚 API Documentation: {Urls}/api-docs", urls.Split(';')[0]);
+    Log.Information("🔗 SignalR Hub: {Urls}/hub/dashboard", urls.Split(';')[0]);
+    Log.Information("💡 Access from any device on your network for remote monitoring");
+    Log.Information("🚀 PocketFence-Simple is ready for AI-powered parental control!");
+}
+
+// Extension method for security headers
+public static class SecurityHeadersExtensions
+{
+    public static IApplicationBuilder UseSecurityHeaders(this IApplicationBuilder app)
+    {
+        return app.Use(async (context, next) =>
+        {
+            context.Response.Headers.Append("X-Content-Type-Options", "nosniff");
+            context.Response.Headers.Append("X-Frame-Options", "DENY");
+            context.Response.Headers.Append("X-XSS-Protection", "1; mode=block");
+            context.Response.Headers.Append("Referrer-Policy", "strict-origin-when-cross-origin");
+            
+            await next();
+        });
+    }
+}
+
+// Background service for system monitoring
+public class SystemMonitoringService(ILogger<SystemMonitoringService> logger) : BackgroundService
+{
+    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+    {
+        logger.LogInformation("System monitoring service started");
+        
+        using var timer = new PeriodicTimer(TimeSpan.FromMinutes(5));
+        
+        try
+        {
+            while (await timer.WaitForNextTickAsync(stoppingToken))
+            {
+                var memoryUsage = GC.GetTotalMemory(false) / 1024.0 / 1024.0;
+                logger.LogDebug("Memory usage: {MemoryMB:F2} MB", memoryUsage);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            logger.LogInformation("System monitoring service stopped");
+        }
+    }
+}
+
+// Health check service
+public class HealthCheckService : Microsoft.Extensions.Diagnostics.HealthChecks.IHealthCheck
+{
+    public Task<Microsoft.Extensions.Diagnostics.HealthChecks.HealthCheckResult> CheckHealthAsync(
+        Microsoft.Extensions.Diagnostics.HealthChecks.HealthCheckContext context, 
+        CancellationToken cancellationToken = default)
     {
         try
         {
-            using var socket = new System.Net.Sockets.Socket(
-                System.Net.Sockets.AddressFamily.InterNetwork, 
-                System.Net.Sockets.SocketType.Dgram, 0);
+            var memoryUsage = GC.GetTotalMemory(false);
+            var isHealthy = memoryUsage < 500_000_000; // 500MB threshold
             
-            socket.Connect("8.8.8.8", 65530);
-            var endPoint = socket.LocalEndPoint as System.Net.IPEndPoint;
-            return endPoint?.Address.ToString() ?? "localhost";
+            return Task.FromResult(isHealthy 
+                ? Microsoft.Extensions.Diagnostics.HealthChecks.HealthCheckResult.Healthy("System operating normally")
+                : Microsoft.Extensions.Diagnostics.HealthChecks.HealthCheckResult.Degraded($"High memory usage: {memoryUsage / 1024.0 / 1024.0:F2} MB"));
         }
-        catch
+        catch (Exception ex)
         {
-            return "localhost";
+            return Task.FromResult(Microsoft.Extensions.Diagnostics.HealthChecks.HealthCheckResult.Unhealthy("Health check failed", ex));
         }
     }
 }

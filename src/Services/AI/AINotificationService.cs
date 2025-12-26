@@ -4,36 +4,37 @@ using PocketFence_Simple.Models;
 using Microsoft.AspNetCore.SignalR;
 using PocketFence_Simple.Hubs;
 
-namespace PocketFence_Simple.Services.AI
+namespace PocketFence_Simple.Services.AI;
+
+public sealed class AINotificationService(
+    ILogger<AINotificationService> logger,
+    IHubContext<DashboardHub> hubContext) : IDisposable
 {
-    public class AINotificationService
+    private readonly ConcurrentDictionary<string, AINotification> _notifications = [];
+    private readonly PeriodicTimer _cleanupTimer = new(TimeSpan.FromHours(1));
+    private readonly CancellationTokenSource _cancellationTokenSource = new();
+
+    // Start background cleanup task in constructor body
+    static AINotificationService()
     {
-        private readonly ILogger<AINotificationService> _logger;
-        private readonly IHubContext<DashboardHub> _hubContext;
-        private readonly ConcurrentDictionary<string, AINotification> _notifications = new();
-        private readonly Timer _cleanupTimer;
+        // Any static initialization if needed
+    }
 
-        public AINotificationService(ILogger<AINotificationService> logger, IHubContext<DashboardHub> hubContext)
-        {
-            _logger = logger;
-            _hubContext = hubContext;
 
-            // Clean up old notifications every hour
-            _cleanupTimer = new Timer(CleanupOldNotifications, null, TimeSpan.FromHours(1), TimeSpan.FromHours(1));
-        }
 
-        public async Task CreateThreatNotificationAsync(AIThreatAlert threat)
+        public async ValueTask CreateThreatNotificationAsync(AIThreatAlert threat, CancellationToken cancellationToken = default)
         {
             var notification = CreateNotification(
                 NotificationType.ThreatDetected,
                 GetThreatTitle(threat.ThreatLevel),
-                $"AI blocked {threat.ThreatLevel.ToString().ToLower()}-risk content on {threat.DeviceName}",
+                $"AI blocked {threat.ThreatLevel.ToString().ToLowerInvariant()}-risk content on {threat.DeviceName}",
                 GetThreatPriority(threat.ThreatLevel));
 
-            await SendNotificationAsync(notification);
+            await SendNotificationAsync(notification, cancellationToken);
         }
 
-        public async Task CreateActionNotificationAsync(string action, string context, Dictionary<string, object>? data = null)
+        public async ValueTask CreateActionNotificationAsync(string action, string context, 
+            Dictionary<string, object>? data = null, CancellationToken cancellationToken = default)
         {
             var notification = CreateNotification(
                 NotificationType.ActionTaken,
@@ -41,10 +42,10 @@ namespace PocketFence_Simple.Services.AI
                 $"Automatically {action} in {context}",
                 NotificationPriority.Normal);
 
-            await SendNotificationAsync(notification);
+            await SendNotificationAsync(notification, cancellationToken);
         }
 
-        public async Task CreateUpdateNotificationAsync(AIUpdateInfo updateInfo)
+        public async ValueTask CreateUpdateNotificationAsync(AIUpdateInfo updateInfo, CancellationToken cancellationToken = default)
         {
             var notification = CreateNotification(
                 NotificationType.SystemUpdate,
@@ -52,24 +53,26 @@ namespace PocketFence_Simple.Services.AI
                 $"Version {updateInfo.Version} - {updateInfo.Description}",
                 updateInfo.IsSecurityUpdate ? NotificationPriority.High : NotificationPriority.Normal);
 
-            await SendNotificationAsync(notification);
+            await SendNotificationAsync(notification, cancellationToken);
         }
 
-        public List<AINotification> GetActiveNotifications()
+        public IReadOnlyList<AINotification> GetActiveNotifications()
         {
-            return _notifications.Values
-                .Where(n => n.Timestamp > DateTime.UtcNow.AddHours(-24))
-                .OrderByDescending(n => n.Timestamp)
-                .ToList();
+            var cutoffTime = DateTime.UtcNow.AddHours(-24);
+            return [.. _notifications.Values
+                .Where(n => n.Timestamp > cutoffTime)
+                .OrderByDescending(n => n.Timestamp)];
         }
 
-        public async Task DismissNotificationAsync(string notificationId)
+        public async ValueTask<bool> DismissNotificationAsync(string notificationId, CancellationToken cancellationToken = default)
         {
             if (_notifications.TryRemove(notificationId, out var notification))
             {
-                await _hubContext.Clients.All.SendAsync("NotificationDismissed", notificationId);
-                _logger.LogDebug("Notification dismissed: {Id}", notificationId);
+                await hubContext.Clients.All.SendAsync("NotificationDismissed", notificationId, cancellationToken);
+                logger.LogDebug("Notification dismissed: {Id}", notificationId);
+                return true;
             }
+            return false;
         }
 
         private AINotification CreateNotification(NotificationType type, string title, string message, NotificationPriority priority)
@@ -85,11 +88,11 @@ namespace PocketFence_Simple.Services.AI
             };
         }
 
-        private async Task SendNotificationAsync(AINotification notification)
+        private async ValueTask SendNotificationAsync(AINotification notification, CancellationToken cancellationToken = default)
         {
             _notifications[notification.Id] = notification;
-            await _hubContext.Clients.All.SendAsync("NewNotification", notification);
-            _logger.LogInformation("Sent {Priority} notification: {Title}", notification.Priority, notification.Title);
+            await hubContext.Clients.All.SendAsync("NewNotification", notification, cancellationToken);
+            logger.LogInformation("Sent {Priority} notification: {Title}", notification.Priority, notification.Title);
         }
 
         private string GetThreatTitle(ThreatLevel level) => level switch
@@ -107,25 +110,48 @@ namespace PocketFence_Simple.Services.AI
             _ => NotificationPriority.Normal
         };
 
-        private void CleanupOldNotifications(object? state)
+        private async Task StartCleanupAsync(CancellationToken cancellationToken)
+        {
+            try
+            {
+                while (await _cleanupTimer.WaitForNextTickAsync(cancellationToken))
+                {
+                    await CleanupOldNotificationsAsync();
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                // Expected when cancellation is requested
+            }
+        }
+
+        private ValueTask CleanupOldNotificationsAsync()
         {
             var cutoff = DateTime.UtcNow.AddDays(-7);
-            var oldNotifications = _notifications.Where(n => n.Value.Timestamp < cutoff).Select(n => n.Key).ToList();
+            var oldNotificationIds = _notifications
+                .Where(n => n.Value.Timestamp < cutoff)
+                .Select(n => n.Key)
+                .ToArray();
             
-            foreach (var id in oldNotifications)
+            var removedCount = 0;
+            foreach (var id in oldNotificationIds)
             {
-                _notifications.TryRemove(id, out _);
+                if (_notifications.TryRemove(id, out _))
+                    removedCount++;
             }
 
-            if (oldNotifications.Count > 0)
+            if (removedCount > 0)
             {
-                _logger.LogDebug("Cleaned up {Count} old notifications", oldNotifications.Count);
+                logger.LogDebug("Cleaned up {Count} old notifications", removedCount);
             }
+            
+            return ValueTask.CompletedTask;
         }
 
         public void Dispose()
         {
-            _cleanupTimer?.Dispose();
+            _cancellationTokenSource.Cancel();
+            _cleanupTimer.Dispose();
+            _cancellationTokenSource.Dispose();
         }
-    }
 }

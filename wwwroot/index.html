@@ -2,7 +2,16 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="PocketFence">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="theme-color" content="#2563eb">
+    
+    <!-- PWA Manifest -->
+    <link rel="manifest" href="/manifest.json">
+    
     <title>PocketFence Dashboard</title>
     <link rel="manifest" href="/manifest.json">
     <meta name="theme-color" content="#1976D2">
@@ -505,7 +514,7 @@
                     <span id="hotspot-status">Disabled</span>
                     <div class="switch" id="hotspot-toggle"></div>
                 </div>
-                <button class="btn" onclick="toggleHotspot()">Enable Hotspot</button>
+                <button class="btn" id="hotspot-button" onclick="toggleHotspot()">Enable Hotspot</button>
             </div>
 
             <div class="card success">
