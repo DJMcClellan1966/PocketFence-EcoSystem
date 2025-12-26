@@ -1,5 +1,6 @@
 using PocketFence_Simple.Services;
 using PocketFence_Simple.Services.AI;
+using PocketFence_Simple.Services.iOS;
 using PocketFence_Simple.Hubs;
 using Serilog;
 using System.Runtime.InteropServices;
@@ -96,14 +97,18 @@ static void ConfigureServices(IServiceCollection services)
     // Register core services with singleton lifetime
     services.AddSingleton<HotspotService>();
     services.AddSingleton<NetworkTrafficService>();
-    services.AddSingleton<ContentFilterService>();
-
+    services.AddSingleton<ContentFilterService>();    
+    // Register network mode detection service
+    services.AddSingleton<INetworkModeService, NetworkModeService>();
     // Register AI services - using modern DI patterns
     services.AddSingleton<AINotificationService>();
     services.AddSingleton<AIThreatDetectionService>();
     services.AddSingleton<SelfHealingService>();
     services.AddSingleton<AutoUpdateService>();
     services.AddSingleton<AIParentalAssistantService>();
+    
+    // Register iOS services
+    services.AddSingleton<iOSHotspotHelper>();
 
     // Add health checks
     services.AddHealthChecks()
@@ -197,6 +202,11 @@ static async Task InitializeServicesAsync(IServiceProvider services)
         using var scope = services.CreateScope();
         var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
         
+        // Initialize network mode monitoring first
+        var networkModeService = scope.ServiceProvider.GetRequiredService<INetworkModeService>();
+        logger.LogInformation("🔍 Initializing network mode detection");
+        await networkModeService.StartMonitoringAsync();
+        
         // Initialize AI services
         var aiServices = new object?[]
         {
@@ -213,6 +223,7 @@ static async Task InitializeServicesAsync(IServiceProvider services)
         await Task.CompletedTask;
         
         logger.LogInformation("✅ All AI services initialized successfully");
+        logger.LogInformation("📡 Network mode monitoring active");
     }
     catch (Exception ex)
     {

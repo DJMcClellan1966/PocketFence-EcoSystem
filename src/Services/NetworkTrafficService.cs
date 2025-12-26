@@ -62,34 +62,16 @@ namespace PocketFence_Simple.Services
         {
             try
             {
-                // Configure the hosted network adapter to use local DNS
-                var adapterName = await GetHostedNetworkAdapterNameAsync();
+                // Use less intrusive blocking - avoid DNS redirection that can interfere with hotspot
+                // Instead, we'll rely on HTTP proxy blocking
+                System.Diagnostics.Debug.WriteLine("Using HTTP-based content filtering to avoid hotspot interference");
                 
-                if (!string.IsNullOrEmpty(adapterName))
-                {
-                    // Set DNS to localhost to intercept requests
-                    var startInfo = new ProcessStartInfo
-                    {
-                        FileName = "netsh",
-                        Arguments = $"interface ipv4 set dns \"{adapterName}\" static 127.0.0.1",
-                        RedirectStandardOutput = true,
-                        RedirectStandardError = true,
-                        UseShellExecute = false,
-                        CreateNoWindow = true,
-                        Verb = "runas"
-                    };
-
-                    using var process = Process.Start(startInfo);
-                    if (process != null)
-                    {
-                        await process.WaitForExitAsync();
-                        System.Diagnostics.Debug.WriteLine($"DNS configured for adapter: {adapterName}");
-                    }
-                }
+                // Don't modify DNS settings as this can cause hotspot to disconnect
+                // The HTTP listener will handle blocking without disrupting the network adapter
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"Error configuring DNS redirection: {ex.Message}");
+                System.Diagnostics.Debug.WriteLine($"Error in DNS configuration: {ex.Message}");
                 throw;
             }
         }
@@ -183,18 +165,28 @@ namespace PocketFence_Simple.Services
                 // Check if request should be blocked
                 if (_contentFilter.ShouldBlockRequest(url, deviceMac))
                 {
-                    // Block the request
+                    // Block the request without disrupting the hotspot connection
                     await SendBlockedPageAsync(response, url);
+                    System.Diagnostics.Debug.WriteLine($"Blocked request to {url} from device {deviceMac}");
                 }
                 else
                 {
-                    // Forward the request (simplified proxy)
-                    await ForwardRequestAsync(request, response);
+                    // For allowed requests, just close the connection gracefully 
+                    // to avoid interfering with the client's actual request
+                    response.StatusCode = 204; // No Content
+                    response.Close();
                 }
             }
             catch (Exception ex)
             {
                 System.Diagnostics.Debug.WriteLine($"Error processing HTTP request: {ex.Message}");
+                // Don't let request processing errors affect the hotspot
+                try
+                {
+                    context.Response.StatusCode = 500;
+                    context.Response.Close();
+                }
+                catch { /* Ignore cleanup errors */ }
             }
         }
 
@@ -268,14 +260,20 @@ namespace PocketFence_Simple.Services
                         <div class='blocked-url'>Blocked URL: {blockedUrl}</div>
                         <p>If you believe this is an error, please contact your network administrator.</p>
                         <p><small>Blocked at: {DateTime.Now:yyyy-MM-dd HH:mm:ss}</small></p>
+                        <p><small>PocketFence is protecting your network connection.</small></p>
                     </div>
                 </body>
                 </html>";
                 
                 var buffer = System.Text.Encoding.UTF8.GetBytes(blockedPageHtml);
                 response.StatusCode = 200;
-                response.ContentType = "text/html";
+                response.ContentType = "text/html; charset=utf-8";
                 response.ContentLength64 = buffer.Length;
+                
+                // Add headers to prevent caching
+                response.Headers.Add("Cache-Control", "no-cache, no-store, must-revalidate");
+                response.Headers.Add("Pragma", "no-cache");
+                response.Headers.Add("Expires", "0");
                 
                 await response.OutputStream.WriteAsync(buffer, 0, buffer.Length);
                 response.OutputStream.Close();
@@ -283,6 +281,8 @@ namespace PocketFence_Simple.Services
             catch (Exception ex)
             {
                 System.Diagnostics.Debug.WriteLine($"Error sending blocked page: {ex.Message}");
+                // Ensure response is closed even on error to prevent hanging connections
+                try { response.Close(); } catch { /* Ignore */ }
             }
         }
 
@@ -328,33 +328,13 @@ namespace PocketFence_Simple.Services
         {
             try
             {
-                var adapterName = await GetHostedNetworkAdapterNameAsync();
-                
-                if (!string.IsNullOrEmpty(adapterName))
-                {
-                    // Reset DNS to automatic (DHCP)
-                    var startInfo = new ProcessStartInfo
-                    {
-                        FileName = "netsh",
-                        Arguments = $"interface ipv4 set dns \"{adapterName}\" dhcp",
-                        RedirectStandardOutput = true,
-                        RedirectStandardError = true,
-                        UseShellExecute = false,
-                        CreateNoWindow = true,
-                        Verb = "runas"
-                    };
-
-                    using var process = Process.Start(startInfo);
-                    if (process != null)
-                    {
-                        await process.WaitForExitAsync();
-                        System.Diagnostics.Debug.WriteLine("DNS settings restored");
-                    }
-                }
+                // Since we're not modifying DNS settings anymore, 
+                // there's nothing to restore to avoid hotspot interference
+                System.Diagnostics.Debug.WriteLine("DNS settings not modified - no restoration needed");
             }
             catch (Exception)
             {
-                // DNS configuration failed, continue without redirection
+                // Continue without issues
             }
         }
 

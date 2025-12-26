@@ -14,8 +14,9 @@
     <ApplicationDisplayVersion>2.0</ApplicationDisplayVersion>
     <ApplicationVersion>2</ApplicationVersion>
 
-    <!-- Windows Service Support -->
-    <WindowsServiceSupport>true</WindowsServiceSupport>
+    <!-- Cross-Platform Support -->
+    <RuntimeIdentifiers>win-x64;osx-x64;osx-arm64;linux-x64;linux-arm64</RuntimeIdentifiers>
+    <WindowsServiceSupport Condition="$([MSBuild]::IsOSPlatform('windows'))">true</WindowsServiceSupport>
 
     <!-- Platform Support -->
     <SupportedOSPlatformVersion Condition="$([MSBuild]::IsOSPlatform('windows'))">10.0.17763.0</SupportedOSPlatformVersion>
@@ -26,14 +27,10 @@
   <ItemGroup>
     <!-- ASP.NET Core Web Framework -->
     <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="9.0.0" />
-    <PackageReference Include="Microsoft.Extensions.Hosting.WindowsServices" Version="10.0.1" />
     <PackageReference Include="Swashbuckle.AspNetCore" Version="7.2.0" />
     
-    <!-- SignalR for Real-time Updates -->
-    <PackageReference Include="Microsoft.AspNetCore.SignalR" Version="1.1.0" />
-    
     <!-- Windows Service Support -->
-    <PackageReference Include="Microsoft.Extensions.Hosting.WindowsServices" Version="9.0.0" Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'windows'" />
+    <PackageReference Include="Microsoft.Extensions.Hosting.WindowsServices" Version="10.0.1" />
     
     <!-- Linux/macOS Service Support -->
     <PackageReference Include="Microsoft.Extensions.Hosting.Systemd" Version="9.0.0" Condition="$([MSBuild]::IsOSPlatform('linux'))" />
@@ -41,13 +38,6 @@
     <!-- Network and System Libraries -->
     <PackageReference Include="System.Management" Version="10.0.1" Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'windows'" />
     <PackageReference Include="Microsoft.Win32.Registry" Version="6.0.0" Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'windows'" />
-    
-    <!-- JSON and Configuration -->
-    <PackageReference Include="System.Text.Json" Version="10.0.1" />
-    <PackageReference Include="Microsoft.Extensions.Configuration.Json" Version="10.0.1" />
-    
-    <!-- HTTP Client -->
-    <PackageReference Include="Microsoft.Extensions.Http" Version="9.0.0" />
     
     <!-- Logging -->
     <PackageReference Include="Serilog.AspNetCore" Version="8.0.2" />

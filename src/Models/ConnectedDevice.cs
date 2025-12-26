@@ -15,6 +15,7 @@ namespace PocketFence_Simple.Models
         public string DeviceType { get; set; } = string.Empty; // e.g., "Desktop", "Mobile", "Tablet", "Smart TV", etc.
         public DateTime FirstSeen { get; set; }
         public DateTime LastSeen { get; set; }
+        public bool IsOnline { get; set; } = true; // Device is currently connected
         public bool IsBlocked { get; set; }
         public bool IsChildDevice { get; set; }
         
