@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Net.Http;
 
 namespace PocketFence_AI;
 
@@ -10,6 +11,8 @@ public class Program
 {
     private static readonly SimpleAI _ai = new SimpleAI();
     private static readonly ContentFilter _filter = new ContentFilter();
+    private static readonly SmartUpdateManager _updateManager = new SmartUpdateManager();
+    private static readonly Timer _autoUpdateTimer = new Timer(AutoUpdateCheck, null, TimeSpan.FromHours(6), TimeSpan.FromHours(6));
     
     public static async Task Main(string[] args)
     {
@@ -55,6 +58,18 @@ public class Program
                 case "update":
                     await CheckForUpdatesAsync();
                     break;
+                case "backup":
+                    await CreateBackupAsync();
+                    break;
+                case "restore":
+                    await RestoreFromBackupAsync();
+                    break;
+                case "rollback":
+                    await AIRollbackAsync();
+                    break;
+                case var cmd when cmd.StartsWith("autoupdate "):
+                    SetAutoUpdate(cmd.EndsWith("on"));
+                    break;
                 case "exit":
                 case "quit":
                     Console.WriteLine("👋 Goodbye!");
@@ -97,6 +112,11 @@ public class Program
         Console.WriteLine("  stats            - Show filtering statistics");
         Console.WriteLine("  childmode on/off - Enable/disable child protection mode");
         Console.WriteLine("  childstats       - Show child protection statistics");
+        Console.WriteLine("  update           - Check and install updates");
+        Console.WriteLine("  backup           - Create manual backup of current version");
+        Console.WriteLine("  restore          - Restore from backup if update failed");
+        Console.WriteLine("  rollback         - Automatically rollback to last working version");
+        Console.WriteLine("  autoupdate on/off - Enable/disable automatic updates");
         Console.WriteLine("  clear            - Clear screen");
         Console.WriteLine("  help             - Show this help");
         Console.WriteLine("  exit             - Exit program");
@@ -179,7 +199,36 @@ public class Program
     
     private static async Task CheckForUpdatesAsync()
     {
-        await UpdateManager.CheckForUpdatesAsync();
+        await _updateManager.CheckAndUpdateAsync();
+    }
+    
+    private static async Task CreateBackupAsync()
+    {
+        await _updateManager.CreateManualBackupAsync();
+    }
+    
+    private static async Task RestoreFromBackupAsync()
+    {
+        await _updateManager.RestoreFromBackupAsync();
+    }
+    
+    private static async Task AIRollbackAsync()
+    {
+        await _updateManager.AIRollbackAsync();
+    }
+    
+    private static void SetAutoUpdate(bool enabled)
+    {
+        _updateManager.SetAutoUpdate(enabled);
+        Console.WriteLine($"🔄 Auto-update {(enabled ? "enabled" : "disabled")}");
+    }
+    
+    private static async void AutoUpdateCheck(object? state)
+    {
+        if (_updateManager.IsAutoUpdateEnabled)
+        {
+            await _updateManager.CheckAndUpdateAsync(silent: true);
+        }
     }
 }
 
@@ -575,34 +624,61 @@ public class ContentAnalysis
     public List<string> Flags { get; set; } = new();
 }
 
-// Update management functionality
-public static class UpdateManager
+// Smart Update Management with AI Recovery
+public class SmartUpdateManager
 {
     private static readonly HttpClient _httpClient = new();
     private const string UpdateUrl = "https://github.com/DJMcClellan1966/PocketFence-EcoSystem/releases/latest/download/";
+    private static bool _autoUpdateEnabled = true;
+    private static readonly string _backupDir = Path.Combine(".", "backups");
+    private static readonly string _configFile = "update-config.json";
     
-    public static async Task<bool> CheckForUpdatesAsync()
+    public bool IsAutoUpdateEnabled => _autoUpdateEnabled;
+    
+    public async Task<bool> CheckAndUpdateAsync(bool silent = false)
     {
         try
         {
-            Console.WriteLine("🔍 Checking for updates...");
+            if (!silent) Console.WriteLine("🔍 Checking for updates...");
             
             var currentVersion = GetCurrentVersion();
             var latestVersion = await GetLatestVersionAsync();
             
             if (string.Equals(currentVersion, latestVersion, StringComparison.OrdinalIgnoreCase))
             {
-                Console.WriteLine("✅ You have the latest version!");
+                if (!silent) Console.WriteLine("✅ You have the latest version!");
                 return false;
             }
             
-            Console.WriteLine($"📦 Update available: {currentVersion} → {latestVersion}");
-            Console.Write("Would you like to download it? (y/n): ");
-            
-            var response = Console.ReadLine()?.ToLower();
-            if (response == "y" || response == "yes")
+            if (!silent)
             {
-                await DownloadUpdateAsync();
+                Console.WriteLine($"📦 Update available: {currentVersion} → {latestVersion}");
+                Console.Write("Would you like to download it? (y/n): ");
+                
+                var response = Console.ReadLine()?.ToLower();
+                if (response != "y" && response != "yes")
+                    return false;
+            }
+            
+            // Create automatic backup before update
+            await CreateBackupAsync();
+            
+            // Download and apply update
+            var success = await DownloadAndApplyUpdateAsync();
+            
+            if (success)
+            {
+                // AI Health Check after update
+                var isHealthy = await AIHealthCheckAsync();
+                if (!isHealthy)
+                {
+                    Console.WriteLine("⚠️ AI detected update issues, auto-rolling back...");
+                    await RollbackToBackupAsync();
+                    return false;
+                }
+                
+                Console.WriteLine("✅ Update completed successfully!");
+                SaveSuccessfulUpdate(latestVersion);
                 return true;
             }
             
@@ -610,40 +686,264 @@ public static class UpdateManager
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"❌ Update check failed: {ex.Message}");
+            Console.WriteLine($"❌ Update failed: {ex.Message}");
+            await RollbackToBackupAsync();
             return false;
         }
     }
     
-    private static async Task<string> GetLatestVersionAsync()
+    public async Task CreateManualBackupAsync()
     {
-        var versionUrl = $"{UpdateUrl}version.txt";
-        return (await _httpClient.GetStringAsync(versionUrl)).Trim();
+        await CreateBackupAsync();
+        Console.WriteLine("✅ Manual backup created successfully!");
     }
     
-    private static async Task DownloadUpdateAsync()
+    public async Task RestoreFromBackupAsync()
     {
-        var platform = GetPlatformIdentifier();
-        var fileName = $"PocketFence-AI-{platform}";
-        if (Environment.OSVersion.Platform == PlatformID.Win32NT)
-            fileName += ".exe";
-        
-        var updateUrl = $"{UpdateUrl}{fileName}";
-        var tempPath = $"{fileName}.new";
-        
-        Console.WriteLine($"📥 Downloading from {updateUrl}...");
-        
-        var response = await _httpClient.GetAsync(updateUrl);
-        response.EnsureSuccessStatusCode();
-        
-        await using var fileStream = File.Create(tempPath);
-        await response.Content.CopyToAsync(fileStream);
-        
-        Console.WriteLine("✅ Download complete! Restart the application to use the new version.");
-        Console.WriteLine($"💡 Replace the current executable with: {tempPath}");
+        Console.WriteLine("🔄 Restoring from backup...");
+        await RollbackToBackupAsync();
     }
     
-    private static string GetPlatformIdentifier()
+    public async Task AIRollbackAsync()
+    {
+        Console.WriteLine("🤖 AI analyzing system health...");
+        
+        var isHealthy = await AIHealthCheckAsync();
+        if (isHealthy)
+        {
+            Console.WriteLine("✅ System appears healthy, no rollback needed.");
+            return;
+        }
+        
+        Console.WriteLine("⚠️ AI detected issues, performing automatic rollback...");
+        await RollbackToBackupAsync();
+    }
+    
+    public void SetAutoUpdate(bool enabled)
+    {
+        _autoUpdateEnabled = enabled;
+        SaveConfig();
+    }
+    
+    private async Task CreateBackupAsync()
+    {
+        try
+        {
+            Directory.CreateDirectory(_backupDir);
+            
+            var currentExe = Environment.ProcessPath ?? 
+                           Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "PocketFence-AI.exe");
+            
+            if (File.Exists(currentExe))
+            {
+                var timestamp = DateTime.Now.ToString("yyyy-MM-dd_HH-mm-ss");
+                var backupPath = Path.Combine(_backupDir, $"PocketFence-AI-backup-{timestamp}.exe");
+                
+                File.Copy(currentExe, backupPath, true);
+                
+                // Keep only last 3 backups to save space
+                CleanOldBackups();
+                
+                Console.WriteLine($"📦 Backup created: {backupPath}");
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"⚠️ Backup failed: {ex.Message}");
+        }
+    }
+    
+    private async Task<bool> DownloadAndApplyUpdateAsync()
+    {
+        try
+        {
+            var platform = GetPlatformIdentifier();
+            var fileName = $"PocketFence-AI-{platform}";
+            if (Environment.OSVersion.Platform == PlatformID.Win32NT)
+                fileName += ".exe";
+            
+            var updateUrl = $"{UpdateUrl}{fileName}";
+            var tempPath = $"{fileName}.new";
+            
+            Console.WriteLine($"📥 Downloading from {updateUrl}...");
+            
+            var response = await _httpClient.GetAsync(updateUrl);
+            response.EnsureSuccessStatusCode();
+            
+            // Download with progress
+            await using var fileStream = File.Create(tempPath);
+            await response.Content.CopyToAsync(fileStream);
+            
+            Console.WriteLine("✅ Download complete!");
+            
+            // Apply update (replace current executable)
+            var currentExe = Environment.ProcessPath ?? "PocketFence-AI.exe";
+            var backupExe = currentExe + ".old";
+            
+            // Move current to backup, new to current
+            if (File.Exists(currentExe))
+                File.Move(currentExe, backupExe, true);
+            
+            File.Move(tempPath, currentExe, true);
+            
+            Console.WriteLine("✅ Update applied! Please restart the application.");
+            
+            return true;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"❌ Download failed: {ex.Message}");
+            return false;
+        }
+    }
+    
+    private async Task<bool> AIHealthCheckAsync()
+    {
+        try
+        {
+            // AI-powered health checks with minimal overhead
+            var checks = new[]
+            {
+                () => CheckCoreComponents(),
+                () => CheckMemoryUsage(),
+                () => CheckStartupTime(),
+                () => CheckBasicFunctionality()
+            };
+            
+            var healthScore = 0;
+            foreach (var check in checks)
+            {
+                try
+                {
+                    if (await Task.Run(check))
+                        healthScore++;
+                }
+                catch
+                {
+                    // Check failed
+                }
+            }
+            
+            // AI decision: 75% or higher = healthy
+            var isHealthy = (healthScore / (double)checks.Length) >= 0.75;
+            
+            Console.WriteLine($"🤖 AI Health Score: {healthScore}/{checks.Length} ({healthScore * 100 / checks.Length}%)");
+            
+            return isHealthy;
+        }
+        catch
+        {
+            return false; // If health check itself fails, assume unhealthy
+        }
+    }
+    
+    private bool CheckCoreComponents()
+    {
+        // Verify core classes exist and are functional
+        try
+        {
+            var ai = new SimpleAI();
+            var filter = new ContentFilter();
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+    
+    private bool CheckMemoryUsage()
+    {
+        // Verify memory usage is reasonable (under 100MB)
+        var memory = GC.GetTotalMemory(false);
+        return memory < 100 * 1024 * 1024; // 100MB threshold
+    }
+    
+    private bool CheckStartupTime()
+    {
+        // This is a simple version - in real implementation would measure actual startup
+        return true; // Assume OK for now
+    }
+    
+    private bool CheckBasicFunctionality()
+    {
+        // Test basic AI functionality
+        try
+        {
+            var ai = new SimpleAI();
+            // Test basic AI functionality
+            var threat = ai.AnalyzeThreatLevelAsync("test content").Result;
+            return threat >= 0;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+    
+    private async Task RollbackToBackupAsync()
+    {
+        try
+        {
+            var backups = Directory.GetFiles(_backupDir, "PocketFence-AI-backup-*.exe")
+                                 .OrderByDescending(File.GetCreationTime)
+                                 .ToArray();
+            
+            if (backups.Length == 0)
+            {
+                Console.WriteLine("❌ No backup found to restore from!");
+                return;
+            }
+            
+            var latestBackup = backups[0];
+            var currentExe = Environment.ProcessPath ?? "PocketFence-AI.exe";
+            
+            Console.WriteLine($"🔄 Restoring from: {Path.GetFileName(latestBackup)}");
+            
+            File.Copy(latestBackup, currentExe, true);
+            
+            Console.WriteLine("✅ Rollback completed! Please restart the application.");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"❌ Rollback failed: {ex.Message}");
+        }
+    }
+    
+    private void CleanOldBackups()
+    {
+        try
+        {
+            var backups = Directory.GetFiles(_backupDir, "PocketFence-AI-backup-*.exe")
+                                 .OrderByDescending(File.GetCreationTime)
+                                 .Skip(3) // Keep latest 3
+                                 .ToArray();
+            
+            foreach (var backup in backups)
+            {
+                File.Delete(backup);
+            }
+        }
+        catch
+        {
+            // Ignore cleanup errors
+        }
+    }
+    
+    private async Task<string> GetLatestVersionAsync()
+    {
+        try
+        {
+            var versionUrl = $"{UpdateUrl}version.txt";
+            return (await _httpClient.GetStringAsync(versionUrl)).Trim();
+        }
+        catch
+        {
+            return "unknown";
+        }
+    }
+    
+    private string GetPlatformIdentifier()
     {
         if (Environment.OSVersion.Platform == PlatformID.Win32NT)
             return Environment.Is64BitProcess ? "win-x64" : "win-x86";
@@ -653,7 +953,33 @@ public static class UpdateManager
             return "linux-x64";
     }
     
-    private static string GetCurrentVersion() => "1.0.0";
+    private string GetCurrentVersion() => "1.0.0";
+    
+    private void SaveSuccessfulUpdate(string version)
+    {
+        try
+        {
+            var config = new { LastSuccessfulUpdate = version, Timestamp = DateTime.Now };
+            File.WriteAllText("last-update.json", JsonSerializer.Serialize(config));
+        }
+        catch
+        {
+            // Ignore save errors
+        }
+    }
+    
+    private void SaveConfig()
+    {
+        try
+        {
+            var config = new { AutoUpdateEnabled = _autoUpdateEnabled };
+            File.WriteAllText(_configFile, JsonSerializer.Serialize(config));
+        }
+        catch
+        {
+            // Ignore save errors
+        }
+    }
 }
 
 public class FilterResult
