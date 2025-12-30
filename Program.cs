@@ -96,6 +96,12 @@ public class Program
                 case "childstats":
                     ShowChildStats();
                     break;
+                case var cmd when cmd.StartsWith("ageset "):
+                    SetAgeRestriction(cmd.Substring(7));
+                    break;
+                case "ageinfo":
+                    ShowAgeInfo();
+                    break;
                 case "clear":
                     Console.Clear();
                     break;
@@ -114,6 +120,8 @@ public class Program
         Console.WriteLine("  stats            - Show filtering statistics");
         Console.WriteLine($"  childmode on/off - Enable/disable child protection mode [{(_ai.IsChildModeEnabled ? "🟢 ON" : "🔴 OFF")}]");
         Console.WriteLine("  childstats       - Show child protection statistics");
+        Console.WriteLine($"  ageset <level>   - Set age restriction level [Current: {_ai.GetCurrentAgeLevel()}]");
+        Console.WriteLine("  ageinfo          - Show available age restriction levels");
         Console.WriteLine("  update           - Check and install updates");
         Console.WriteLine("  backup           - Create manual backup of current version");
         Console.WriteLine("  restore          - Restore from backup if update failed");
@@ -124,6 +132,7 @@ public class Program
         Console.WriteLine("  exit             - Exit program");
         Console.WriteLine();
         Console.WriteLine("🛡️ Child Protection Features:");
+        Console.WriteLine($"  • Current Age Level: {_ai.GetCurrentAgeLevel()}");
         Console.WriteLine("  • Blocks inappropriate content automatically");
         Console.WriteLine("  • Monitors for cyberbullying keywords");
         Console.WriteLine("  • Filters adult/violent content");
@@ -199,6 +208,31 @@ public class Program
         Console.WriteLine($"   Safe Score Average: {childStats.SafeScoreAverage:F2}");
     }
     
+    private static void SetAgeRestriction(string level)
+    {
+        if (_ai.SetAgeRestriction(level))
+        {
+            Console.WriteLine($"🎯 Age restriction set to: {_ai.GetCurrentAgeLevel()}");
+            Console.WriteLine($"🛡️ Protection level: {_ai.GetProtectionDescription()}");
+        }
+        else
+        {
+            Console.WriteLine("❌ Invalid age level. Use 'ageinfo' to see available options.");
+        }
+    }
+    
+    private static void ShowAgeInfo()
+    {
+        Console.WriteLine("📋 Available Age Restriction Levels:");
+        Console.WriteLine("  early      - Early Childhood (5-8)   - Maximum protection, educational content only");
+        Console.WriteLine("  elementary - Elementary (9-12)       - High protection, age-appropriate entertainment");
+        Console.WriteLine("  teen       - Teen (13-17)           - Moderate protection, teen-suitable content");
+        Console.WriteLine("  adult      - Adult (18+)            - Minimal protection, full content access");
+        Console.WriteLine();
+        Console.WriteLine($"🎯 Current Setting: {_ai.GetCurrentAgeLevel()}");
+        Console.WriteLine($"🛡️ Protection Level: {_ai.GetProtectionDescription()}");
+    }
+    
     private static async Task CheckForUpdatesAsync()
     {
         await _updateManager.CheckAndUpdateAsync();
@@ -234,6 +268,14 @@ public class Program
     }
 }
 
+public enum AgeLevel
+{
+    Early,      // 5-8: Maximum protection
+    Elementary, // 9-12: High protection  
+    Teen,       // 13-17: Moderate protection
+    Adult       // 18+: Minimal protection
+}
+
 // Lightweight AI engine optimized for local inference with child protection
 public class SimpleAI
 {
@@ -242,6 +284,7 @@ public class SimpleAI
     private readonly Dictionary<string, double> _childUnsafeKeywords;
     private int _processedCount = 0;
     private bool _childModeEnabled = true; // Default to child protection on
+    private AgeLevel _currentAgeLevel = AgeLevel.Elementary; // Default to Elementary (9-12)
     private ChildProtectionStats _childStats = new ChildProtectionStats();
     
     public SimpleAI()
@@ -355,7 +398,8 @@ public class SimpleAI
         var contentLower = content.ToLowerInvariant();
         
         // Child safety checks (higher priority when child mode is enabled)
-        if (_childModeEnabled && childUnsafeScore > 0.6)
+        var ageThreshold = GetAgeThreshold();
+        if (_childModeEnabled && childUnsafeScore > ageThreshold)
         {
             if (contentLower.Contains("violence") || contentLower.Contains("fighting") || contentLower.Contains("weapons"))
             {
@@ -397,13 +441,17 @@ public class SimpleAI
         // Combine threat and child safety scores
         var finalThreatLevel = _childModeEnabled ? Math.Max(threatLevel, childUnsafeScore) : threatLevel;
         
-        var recommendation = finalThreatLevel > 0.7 ? "BLOCK" : 
-                           finalThreatLevel > 0.4 ? "MONITOR" : "ALLOW";
+        // Age-appropriate recommendation thresholds
+        var blockThreshold = _childModeEnabled ? ageThreshold : 0.7;
+        var monitorThreshold = _childModeEnabled ? ageThreshold * 0.6 : 0.4;
+        
+        var recommendation = finalThreatLevel > blockThreshold ? "BLOCK" : 
+                           finalThreatLevel > monitorThreshold ? "MONITOR" : "ALLOW";
         
         // Add child mode indicator
-        if (_childModeEnabled && childUnsafeScore > 0.3)
+        if (_childModeEnabled && childUnsafeScore > (ageThreshold * 0.5))
         {
-            flags.Add("🛡️ Child Protection Active");
+            flags.Add($"🛡️ Child Protection Active - {GetCurrentAgeLevel()}");
         }
         
         return new ContentAnalysis
@@ -423,6 +471,63 @@ public class SimpleAI
     }
 
     public bool IsChildModeEnabled => _childModeEnabled;
+
+    public bool SetAgeRestriction(string level)
+    {
+        switch (level.ToLowerInvariant())
+        {
+            case "early":
+                _currentAgeLevel = AgeLevel.Early;
+                return true;
+            case "elementary":
+                _currentAgeLevel = AgeLevel.Elementary;
+                return true;
+            case "teen":
+                _currentAgeLevel = AgeLevel.Teen;
+                return true;
+            case "adult":
+                _currentAgeLevel = AgeLevel.Adult;
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    public string GetCurrentAgeLevel()
+    {
+        return _currentAgeLevel switch
+        {
+            AgeLevel.Early => "Early Childhood (5-8)",
+            AgeLevel.Elementary => "Elementary (9-12)",
+            AgeLevel.Teen => "Teen (13-17)",
+            AgeLevel.Adult => "Adult (18+)",
+            _ => "Unknown"
+        };
+    }
+
+    public string GetProtectionDescription()
+    {
+        return _currentAgeLevel switch
+        {
+            AgeLevel.Early => "Maximum protection - Educational content only",
+            AgeLevel.Elementary => "High protection - Age-appropriate entertainment",
+            AgeLevel.Teen => "Moderate protection - Teen-suitable content",
+            AgeLevel.Adult => "Minimal protection - Full content access",
+            _ => "Unknown protection level"
+        };
+    }
+
+    private double GetAgeThreshold()
+    {
+        return _currentAgeLevel switch
+        {
+            AgeLevel.Early => 0.2,      // Very strict for young children
+            AgeLevel.Elementary => 0.4, // Strict but allows educational content
+            AgeLevel.Teen => 0.6,       // Moderate protection
+            AgeLevel.Adult => 0.8,      // Minimal protection
+            _ => 0.4
+        };
+    }
 
     public ChildProtectionStats GetChildProtectionStats()
     {
@@ -459,7 +564,10 @@ public class SimpleAI
         if (matches > 0)
         {
             unsafeScore = Math.Max(0.0, Math.Min(1.0, unsafeScore / matches));
-            if (unsafeScore > 0.6) _childStats.ContentBlocked++;
+            
+            // Use age-appropriate threshold for blocking decisions
+            var threshold = GetAgeThreshold();
+            if (unsafeScore > threshold) _childStats.ContentBlocked++;
         }
 
         _childStats.SafeScoreAverage = (_childStats.SafeScoreAverage + (1.0 - unsafeScore)) / 2.0;
