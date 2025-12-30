@@ -1,0 +1,177 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             x:Class="PocketFenceApp.MainPage"
+             Title="PocketFence - Family Safety">
+
+    <ScrollView>
+        <VerticalStackLayout Spacing="25" Padding="30,0" VerticalOptions="Center">
+
+            <!-- Header -->
+            <Image Source="dotnet_bot.png"
+                   SemanticProperties.Description="PocketFence logo"
+                   HeightRequest="200"
+                   HorizontalOptions="Center" />
+
+            <Label x:Name="WelcomeLabel"
+                   FontSize="32"
+                   HorizontalOptions="Center"
+                   Text="🛡️ PocketFence Family Safety" />
+
+            <Label x:Name="StatusLabel"
+                   FontSize="18"
+                   HorizontalOptions="Center"
+                   Text="Initializing..." />
+
+            <!-- URL Checker Section -->
+            <Frame BackgroundColor="#e6f3ff" Padding="20" Margin="0,20">
+                <VerticalStackLayout Spacing="15">
+                    <Label Text="🌐 Website Safety Check"
+                           FontSize="20"
+                           FontAttributes="Bold"
+                           HorizontalOptions="Center" />
+                    
+                    <Entry x:Name="UrlEntry"
+                           Placeholder="Enter website URL (e.g., www.example.com)"
+                           Text="{Binding UrlToCheck}"
+                           FontSize="16" />
+                    
+                    <Button x:Name="CheckUrlButton"
+                            Text="Check Website Safety"
+                            BackgroundColor="#007acc"
+                            TextColor="White"
+                            Command="{Binding CheckUrlCommand}"
+                            IsEnabled="{Binding IsEngineReady}"
+                            FontSize="16" />
+                    
+                    <Frame x:Name="UrlResultFrame"
+                           BackgroundColor="{Binding UrlResultColor}"
+                           Padding="15"
+                           IsVisible="{Binding HasUrlResult}">
+                        <VerticalStackLayout Spacing="5">
+                            <Label Text="{Binding UrlResultText}"
+                                   FontSize="16"
+                                   FontAttributes="Bold" />
+                            <Label Text="{Binding UrlResultReason}"
+                                   FontSize="14" />
+                            <Label Text="{Binding UrlThreatScore}"
+                                   FontSize="12"
+                                   TextColor="Gray" />
+                        </VerticalStackLayout>
+                    </Frame>
+                </VerticalStackLayout>
+            </Frame>
+
+            <!-- Content Analyzer Section -->
+            <Frame BackgroundColor="#fff0e6" Padding="20" Margin="0,20">
+                <VerticalStackLayout Spacing="15">
+                    <Label Text="💬 Message Safety Check"
+                           FontSize="20"
+                           FontAttributes="Bold"
+                           HorizontalOptions="Center" />
+                    
+                    <Editor x:Name="ContentEditor"
+                            Placeholder="Enter text message to analyze..."
+                            Text="{Binding ContentToAnalyze}"
+                            HeightRequest="100"
+                            FontSize="16" />
+                    
+                    <Button x:Name="AnalyzeContentButton"
+                            Text="Analyze Message"
+                            BackgroundColor="#ff8c00"
+                            TextColor="White"
+                            Command="{Binding AnalyzeContentCommand}"
+                            IsEnabled="{Binding IsEngineReady}"
+                            FontSize="16" />
+                    
+                    <Frame x:Name="ContentResultFrame"
+                           BackgroundColor="{Binding ContentResultColor}"
+                           Padding="15"
+                           IsVisible="{Binding HasContentResult}">
+                        <VerticalStackLayout Spacing="5">
+                            <Label Text="{Binding ContentResultText}"
+                                   FontSize="16"
+                                   FontAttributes="Bold" />
+                            <Label Text="{Binding ContentCategory}"
+                                   FontSize="14" />
+                            <Label Text="{Binding ContentSafetyScore}"
+                                   FontSize="12"
+                                   TextColor="Gray" />
+                            <Label Text="{Binding ContentFlags}"
+                                   FontSize="12"
+                                   TextColor="Orange"
+                                   IsVisible="{Binding HasContentFlags}" />
+                        </VerticalStackLayout>
+                    </Frame>
+                </VerticalStackLayout>
+            </Frame>
+
+            <!-- Settings Section -->
+            <Frame BackgroundColor="#f0fff0" Padding="20" Margin="0,20">
+                <VerticalStackLayout Spacing="15">
+                    <Label Text="⚙️ Safety Settings"
+                           FontSize="20"
+                           FontAttributes="Bold"
+                           HorizontalOptions="Center" />
+                    
+                    <HorizontalStackLayout Spacing="10">
+                        <Switch x:Name="ChildModeSwitch"
+                                IsToggled="{Binding IsChildModeEnabled}"
+                                OnColor="#4CAF50" />
+                        <Label Text="Child Protection Mode"
+                               FontSize="16"
+                               VerticalOptions="Center" />
+                    </HorizontalStackLayout>
+                    
+                    <Button x:Name="ViewStatsButton"
+                            Text="View Protection Statistics"
+                            BackgroundColor="#4CAF50"
+                            TextColor="White"
+                            Command="{Binding ViewStatsCommand}"
+                            IsEnabled="{Binding IsEngineReady}"
+                            FontSize="16" />
+                </VerticalStackLayout>
+            </Frame>
+
+            <!-- Statistics Display -->
+            <Frame x:Name="StatsFrame"
+                   BackgroundColor="#f5f5f5"
+                   Padding="20"
+                   Margin="0,20"
+                   IsVisible="{Binding ShowStats}">
+                <VerticalStackLayout Spacing="10">
+                    <Label Text="📊 Protection Statistics"
+                           FontSize="18"
+                           FontAttributes="Bold"
+                           HorizontalOptions="Center" />
+                    
+                    <Grid ColumnDefinitions="*,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto" Spacing="10">
+                        
+                        <!-- Row 1 -->
+                        <Label Grid.Row="0" Grid.Column="0" Text="Total Checks:" FontSize="14" />
+                        <Label Grid.Row="0" Grid.Column="1" Text="{Binding Stats.TotalRequests}" FontSize="14" FontAttributes="Bold" />
+                        
+                        <!-- Row 2 -->
+                        <Label Grid.Row="1" Grid.Column="0" Text="Blocked:" FontSize="14" />
+                        <Label Grid.Row="1" Grid.Column="1" Text="{Binding Stats.BlockedRequests}" FontSize="14" FontAttributes="Bold" TextColor="Red" />
+                        
+                        <!-- Row 3 -->
+                        <Label Grid.Row="2" Grid.Column="0" Text="Block Rate:" FontSize="14" />
+                        <Label Grid.Row="2" Grid.Column="1" Text="{Binding BlockRateText}" FontSize="14" FontAttributes="Bold" />
+                        
+                        <!-- Row 4 -->
+                        <Label Grid.Row="3" Grid.Column="0" Text="Violence Detected:" FontSize="14" />
+                        <Label Grid.Row="3" Grid.Column="1" Text="{Binding Stats.ChildProtectionStats.ViolenceDetected}" FontSize="14" FontAttributes="Bold" TextColor="Orange" />
+                        
+                        <!-- Row 5 -->
+                        <Label Grid.Row="4" Grid.Column="0" Text="Adult Content Blocked:" FontSize="14" />
+                        <Label Grid.Row="4" Grid.Column="1" Text="{Binding Stats.ChildProtectionStats.AdultContentBlocked}" FontSize="14" FontAttributes="Bold" TextColor="Red" />
+                        
+                    </Grid>
+                </VerticalStackLayout>
+            </Frame>
+
+        </VerticalStackLayout>
+    </ScrollView>
+
+</ContentPage>

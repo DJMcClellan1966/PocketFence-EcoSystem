@@ -22,8 +22,24 @@
     <DebugType>none</DebugType>
     <DebugSymbols>false</DebugSymbols>
     
+    <!-- Library Package Information -->
+    <GeneratePackageOnBuild>false</GeneratePackageOnBuild>
+    <PackageId>PocketFence.AI</PackageId>
+    <Version>1.0.0</Version>
+    <Authors>PocketFence Team</Authors>
+    <Description>Lightweight local AI content filtering engine with child protection</Description>
+    <PackageTags>ai;content-filter;child-protection;safety;local-inference</PackageTags>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    
     <!-- Cross-Platform Support -->
     <RuntimeIdentifiers>win-x64;osx-x64;osx-arm64;linux-x64;linux-arm64</RuntimeIdentifiers>
   </PropertyGroup>
+
+  <!-- Exclude example projects from build -->
+  <ItemGroup>
+    <Compile Remove="Examples\**" />
+    <EmbeddedResource Remove="Examples\**" />
+    <None Remove="Examples\**" />
+  </ItemGroup>
 
 </Project>
