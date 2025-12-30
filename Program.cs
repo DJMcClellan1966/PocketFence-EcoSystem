@@ -31,6 +31,8 @@ public class Program
             await _filter.LoadFiltersAsync();
             
             Console.WriteLine("✅ Ready! Type 'help' for commands or 'exit' to quit.");
+            Console.WriteLine($"🛡️ Child Protection: {(_ai.IsChildModeEnabled ? "🟢 ON" : "🔴 OFF")} (default)");
+            Console.WriteLine($"🔄 Auto Update: {(_updateManager.IsAutoUpdateEnabled ? "🟢 ON" : "🔴 OFF")} (default)");
             Console.WriteLine();
             
             // Start interactive CLI
@@ -85,11 +87,11 @@ public class Program
                     break;
                 case "childmode on":
                     _ai.EnableChildMode(true);
-                    Console.WriteLine("🛡️ Child protection mode ENABLED");
+                    Console.WriteLine("🛡️ Child protection mode: 🟢 ENABLED (default)");
                     break;
                 case "childmode off":
                     _ai.EnableChildMode(false);
-                    Console.WriteLine("🔓 Child protection mode DISABLED");
+                    Console.WriteLine("🔓 Child protection mode: 🔴 DISABLED");
                     break;
                 case "childstats":
                     ShowChildStats();
@@ -110,13 +112,13 @@ public class Program
         Console.WriteLine("  check <url>      - Check if URL should be blocked");
         Console.WriteLine("  analyze <text>   - Analyze text content for safety");
         Console.WriteLine("  stats            - Show filtering statistics");
-        Console.WriteLine("  childmode on/off - Enable/disable child protection mode");
+        Console.WriteLine($"  childmode on/off - Enable/disable child protection mode [{(_ai.IsChildModeEnabled ? "🟢 ON" : "🔴 OFF")}]");
         Console.WriteLine("  childstats       - Show child protection statistics");
         Console.WriteLine("  update           - Check and install updates");
         Console.WriteLine("  backup           - Create manual backup of current version");
         Console.WriteLine("  restore          - Restore from backup if update failed");
         Console.WriteLine("  rollback         - Automatically rollback to last working version");
-        Console.WriteLine("  autoupdate on/off - Enable/disable automatic updates");
+        Console.WriteLine($"  autoupdate on/off - Enable/disable automatic updates [{(_updateManager.IsAutoUpdateEnabled ? "🟢 ON" : "🔴 OFF")}]");
         Console.WriteLine("  clear            - Clear screen");
         Console.WriteLine("  help             - Show this help");
         Console.WriteLine("  exit             - Exit program");
@@ -220,7 +222,7 @@ public class Program
     private static void SetAutoUpdate(bool enabled)
     {
         _updateManager.SetAutoUpdate(enabled);
-        Console.WriteLine($"🔄 Auto-update {(enabled ? "enabled" : "disabled")}");
+        Console.WriteLine($"🔄 Auto-update: {(enabled ? "🟢 ENABLED" : "🔴 DISABLED")} {(enabled ? "(default)" : "")}");
     }
     
     private static async void AutoUpdateCheck(object? state)
@@ -419,6 +421,8 @@ public class SimpleAI
         _childModeEnabled = enabled;
         _childStats.IsEnabled = enabled;
     }
+
+    public bool IsChildModeEnabled => _childModeEnabled;
 
     public ChildProtectionStats GetChildProtectionStats()
     {
@@ -960,7 +964,9 @@ public class SmartUpdateManager
         try
         {
             var config = new { LastSuccessfulUpdate = version, Timestamp = DateTime.Now };
+#pragma warning disable IL2026
             File.WriteAllText("last-update.json", JsonSerializer.Serialize(config));
+#pragma warning restore IL2026
         }
         catch
         {
@@ -973,7 +979,9 @@ public class SmartUpdateManager
         try
         {
             var config = new { AutoUpdateEnabled = _autoUpdateEnabled };
+#pragma warning disable IL2026
             File.WriteAllText(_configFile, JsonSerializer.Serialize(config));
+#pragma warning restore IL2026
         }
         catch
         {
