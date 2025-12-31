@@ -120,7 +120,7 @@ Environment.Exit(0);
         $TestCode | Out-File -FilePath $TestFile -Encoding UTF8
         
         try {
-            $null = dotnet run $TestFile 2>&1
+            dotnet script $TestFile 2>&1 | Out-Null
             $EndTime = Get-Date
             $StartupTime = ($EndTime - $StartTime).TotalMilliseconds
             $StartupTimes += $StartupTime
@@ -172,8 +172,8 @@ function Test-IntegratedPerformance {
         Write-TestLog "  Testing concurrent stability..."
         for ($i = 1; $i -le 5; $i++) {
             try {
-                $FilterStatus = Get-Process -Id $FilterProcess.Id -ErrorAction Stop
-                $FilterMemory = [math]::Round($FilterStatus.WorkingSet / 1MB, 2)
+                $FilterCheck = Get-Process -Id $FilterProcess.Id -ErrorAction Stop
+                $FilterMemory = [math]::Round($FilterCheck.WorkingSet / 1MB, 2)
                 Write-TestLog "    Concurrent test $i - Filter stable ($FilterMemory MB)"
                 Start-Sleep 1
             }
