@@ -1,0 +1,48 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>PocketFence_AI_Test</RootNamespace>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <UseAppHost>true</UseAppHost>
+    
+    <!-- Optimizations for local inference like GPT4All -->
+    <PublishSingleFile>true</PublishSingleFile>
+    <PublishTrimmed>true</PublishTrimmed>
+    <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
+    
+    <!-- Display Version -->
+    <ApplicationDisplayVersion>1.0</ApplicationDisplayVersion>
+    <ApplicationVersion>1</ApplicationVersion>
+    
+    <!-- Performance Optimizations -->
+    <Optimize>true</Optimize>
+    <DebugType>none</DebugType>
+    <DebugSymbols>false</DebugSymbols>
+    
+    <!-- Library Package Information -->
+    <GeneratePackageOnBuild>false</GeneratePackageOnBuild>
+    <PackageId>PocketFence.AI</PackageId>
+    <Version>1.0.0</Version>
+    <Authors>PocketFence Team</Authors>
+    <Description>Lightweight local AI content filtering engine with child protection</Description>
+    <PackageTags>ai;content-filter;child-protection;safety;local-inference</PackageTags>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    
+    <!-- Cross-Platform Support -->
+    <RuntimeIdentifiers>win-x64;osx-x64;osx-arm64;linux-x64;linux-arm64</RuntimeIdentifiers>
+  </PropertyGroup>
+
+  <!-- Exclude example projects and bootstrap from build -->
+  <ItemGroup>
+    <Compile Remove="Examples\**" />
+    <Compile Remove="Bootstrap\**" />
+    <EmbeddedResource Remove="Examples\**" />
+    <EmbeddedResource Remove="Bootstrap\**" />
+    <None Remove="Examples\**" />
+    <None Remove="Bootstrap\**" />
+  </ItemGroup>
+
+</Project>
