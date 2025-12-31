@@ -108,8 +108,8 @@ function Test-IntegratedPerformance {
         
         # Simulate concurrent operations
         for ($i = 1; $i -le 5; $i++) {
-            $FilterStatus = Get-Process -Id $FilterProcess.Id -ErrorAction Stop
-            $FilterMemory = [math]::Round($FilterStatus.WorkingSet / 1MB, 2)
+            $FilterCheck = Get-Process -Id $FilterProcess.Id -ErrorAction Stop
+            $FilterMemory = [math]::Round($FilterCheck.WorkingSet / 1MB, 2)
             Write-TestLog "    Concurrent test $i`: Filter stable ($FilterMemory MB)"
             Start-Sleep 1
         }
