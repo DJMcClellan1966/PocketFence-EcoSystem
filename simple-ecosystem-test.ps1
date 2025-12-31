@@ -104,7 +104,7 @@ function Test-IntegratedPerformance {
     # Test stability
     try {
         $FilterCheck = Get-Process -Id $FilterProcess.Id -ErrorAction Stop
-        Write-TestLog "    ✅ Filter running (PID: $($FilterProcess.Id))"
+        Write-TestLog "    ✅ Filter running (PID: $($FilterCheck.Id))"
         
         # Simulate concurrent operations
         for ($i = 1; $i -le 5; $i++) {

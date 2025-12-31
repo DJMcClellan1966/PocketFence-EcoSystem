@@ -29,7 +29,7 @@ try {
     Start-Sleep 5
     
     $FilterCheck = Get-Process -Id $FilterProcess.Id -ErrorAction Stop
-    Write-TestLog "✅ Filter started successfully (PID: $($FilterProcess.Id))" "Green"
+    Write-TestLog "✅ Filter started successfully (PID: $($FilterCheck.Id))" "Green"
     
     Write-TestLog "📊 Running $Duration-second performance test..." "Yellow"
     

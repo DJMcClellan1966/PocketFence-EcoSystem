@@ -120,7 +120,7 @@ Environment.Exit(0);
         $TestCode | Out-File -FilePath $TestFile -Encoding UTF8
         
         try {
-            $Result = dotnet run $TestFile 2>&1
+            $null = dotnet run $TestFile 2>&1
             $EndTime = Get-Date
             $StartupTime = ($EndTime - $StartTime).TotalMilliseconds
             $StartupTimes += $StartupTime
@@ -166,7 +166,7 @@ function Test-IntegratedPerformance {
     try {
         $FilterCheck = Get-Process -Id $FilterProcess.Id -ErrorAction Stop
         $IntegrationResults.FilterRunning = $true
-        Write-TestLog "    ✅ Filter component running (PID: $($FilterProcess.Id))"
+        Write-TestLog "    ✅ Filter component running (PID: $($FilterCheck.Id))"
         
         # Test concurrent operations
         Write-TestLog "  Testing concurrent stability..."
@@ -174,7 +174,7 @@ function Test-IntegratedPerformance {
             try {
                 $FilterStatus = Get-Process -Id $FilterProcess.Id -ErrorAction Stop
                 $FilterMemory = [math]::Round($FilterStatus.WorkingSet / 1MB, 2)
-                Write-TestLog "    Concurrent test $i`: Filter stable ($FilterMemory MB)"
+                Write-TestLog "    Concurrent test $i - Filter stable ($FilterMemory MB)"
                 Start-Sleep 1
             }
             catch {
@@ -221,37 +221,37 @@ Platform: $([System.Environment]::OSVersion.Platform) $([System.Environment]::OS
 ════════════════════════════════════════════════════════════════
 
 📦 PocketFence-Filter Performance:
-   🚀 Startup Time: $(if($Global:TestResults.FilterStartup.AverageMs) { $Global:TestResults.FilterStartup.AverageMs } else { 'N/A' }) ms [$(if($Global:TestResults.FilterStartup.Grade) { $Global:TestResults.FilterStartup.Grade } else { 'N/A' })]
-   🧠 Memory Usage: $(if($Global:TestResults.FilterMemory.AverageMB) { $Global:TestResults.FilterMemory.AverageMB } else { 'N/A' }) MB [$(if($Global:TestResults.FilterMemory.Grade) { $Global:TestResults.FilterMemory.Grade } else { 'N/A' })]
+   🚀 Startup Time: $($Global:TestResults.FilterStartup.AverageMs) ms [$($Global:TestResults.FilterStartup.Grade)]
+   🧠 Memory Usage: $($Global:TestResults.FilterMemory.AverageMB) MB [$($Global:TestResults.FilterMemory.Grade)]
 
 🤖 PocketFence-AI Performance:  
-   🚀 Startup Time: $(if($Global:TestResults.AIStartup.AverageMs) { $Global:TestResults.AIStartup.AverageMs } else { 'N/A' }) ms [$(if($Global:TestResults.AIStartup.Grade) { $Global:TestResults.AIStartup.Grade } else { 'N/A' })]
+   🚀 Startup Time: $($Global:TestResults.AIStartup.AverageMs) ms [$($Global:TestResults.AIStartup.Grade)]
 
 🔄 Integrated Performance:
-   Grade: $(if($Global:TestResults.Integration.Grade) { $Global:TestResults.Integration.Grade } else { 'N/A' })
-   Filter Stability: $(if($Global:TestResults.Integration.FilterRunning) { $Global:TestResults.Integration.FilterRunning } else { 'Unknown' })
-   Concurrent Ops: $(if($Global:TestResults.Integration.ConcurrentStability) { $Global:TestResults.Integration.ConcurrentStability } else { 'Unknown' })
+   Grade: $($Global:TestResults.Integration.Grade)
+   Filter Stability: $($Global:TestResults.Integration.FilterRunning)
+   Concurrent Ops: $($Global:TestResults.Integration.ConcurrentStability)
 
 📈 PERFORMANCE ANALYSIS:
 ════════════════════════════════════════════════════════════════
 
 Filter Component Analysis:
-- Startup Performance: $(if($Global:TestResults.FilterStartup.Grade) { $Global:TestResults.FilterStartup.Grade } else { 'N/A' }) grade
-- Memory Efficiency: $(if($Global:TestResults.FilterMemory.Grade) { $Global:TestResults.FilterMemory.Grade } else { 'N/A' }) grade
+- Startup Performance: $($Global:TestResults.FilterStartup.Grade) grade
+- Memory Efficiency: $($Global:TestResults.FilterMemory.Grade) grade
 - Expected: ~1.2s startup, ~16MB memory (GPT4All optimized)
 
 AI Component Analysis:  
-- Startup Performance: $(if($Global:TestResults.AIStartup.Grade) { $Global:TestResults.AIStartup.Grade } else { 'N/A' }) grade
+- Startup Performance: $($Global:TestResults.AIStartup.Grade) grade
 - Expected: ~1.0s startup for local AI processing
 
 Integration Analysis:
-- Cross-component stability: $(if($Global:TestResults.Integration.ConcurrentStability) { $Global:TestResults.Integration.ConcurrentStability } else { 'Unknown' })
+- Cross-component stability: $($Global:TestResults.Integration.ConcurrentStability)
 - Resource sharing efficiency: Good (separate processes)
 
 🎯 ECOSYSTEM READINESS:
 ════════════════════════════════════════════════════════════════
 
-Overall Grade: $(if($Global:TestResults.Integration.Grade) { $Global:TestResults.Integration.Grade } else { 'N/A' })
+Overall Grade: $($Global:TestResults.Integration.Grade)
 
 Performance Benchmarks Met:
 ✅ Filter startup < 2s (GPT4All target)

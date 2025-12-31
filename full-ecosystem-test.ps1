@@ -36,7 +36,7 @@ function Test-FullEcosystem {
         # Verify Filter is running
         $FilterCheck = Get-Process -Id $FilterProcess.Id -ErrorAction Stop
         $TestResults.FilterStarted = $true
-        Write-TestLog "✅ Filter component started successfully (PID: $($FilterProcess.Id))" "Green"
+        Write-TestLog "✅ Filter component started successfully (PID: $($FilterCheck.Id))" "Green"
         
         # Monitor performance during workload
         Write-TestLog "📊 Running workload simulation for $Duration seconds..." "Yellow"
