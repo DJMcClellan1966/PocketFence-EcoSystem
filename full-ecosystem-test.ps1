@@ -44,8 +44,8 @@ function Test-FullEcosystem {
         for ($i = 1; $i -le $Duration; $i++) {
             try {
                 # Check Filter health
-                $FilterStatus = Get-Process -Id $FilterProcess.Id -ErrorAction Stop
-                $MemoryMB = [math]::Round($FilterStatus.WorkingSet / 1MB, 2)
+                $FilterCheck = Get-Process -Id $FilterProcess.Id -ErrorAction Stop
+                $MemoryMB = [math]::Round($FilterCheck.WorkingSet / 1MB, 2)
                 $TestResults.FilterMemory += $MemoryMB
                 
                 # Simulate AI workload (mock processing)
